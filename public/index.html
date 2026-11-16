@@ -1,126 +1,93 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const { Server } = require('socket.io');
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Facecall</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Realtime video room</p>
+          <h1>Facecall</h1>
+        </div>
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*' },
-});
+        <div class="topbar-actions">
+          <button id="copy-room-link" class="secondary-btn" type="button">Copy room link</button>
+          <button id="leave-room" class="secondary-btn danger" type="button">Leave room</button>
+        </div>
+      </header>
 
-const PORT = process.env.PORT || 3000;
-const roomMembers = new Map();
+      <main id="join-panel" class="panel active">
+        <div class="card">
+          <div class="card-header">
+            <h2>Join a video call</h2>
+            <span class="badge">WebRTC</span>
+          </div>
 
-app.use(express.static(path.join(__dirname, 'public')));
+          <form id="join-form">
+            <label>
+              Your name
+              <input id="user-name" type="text" maxlength="24" placeholder="Alex" required />
+            </label>
 
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, message: 'Facecall server is running' });
-});
+            <label>
+              Room name
+              <input id="room-name" type="text" maxlength="30" placeholder="demo-room" required />
+            </label>
 
-function getRoomMembers(roomId) {
-  const members = roomMembers.get(roomId) || new Map();
-  return Array.from(members.entries()).map(([socketId, userName]) => ({
-    socketId,
-    userName,
-  }));
-}
+            <button type="submit">Join call</button>
+          </form>
+        </div>
+      </main>
 
-function notifyRoomMembers(roomId) {
-  io.to(roomId).emit('room-members', {
-    members: getRoomMembers(roomId),
-  });
-}
+      <section id="call-panel" class="panel hidden">
+        <div class="status-bar">
+          <span id="connection-status">Ready</span>
+          <span id="room-label">Room: —</span>
+        </div>
 
-function removeSocketFromRoom(socket) {
-  const roomId = socket.data.roomId;
-  if (!roomId) return;
+        <div class="call-content">
+          <div class="video-column">
+            <div class="video-grid">
+              <div class="video-card local-card">
+                <video id="local-video" autoplay muted playsinline></video>
+                <div class="label">You</div>
+              </div>
 
-  const members = roomMembers.get(roomId);
-  if (!members) return;
+              <div id="remote-videos" class="remote-videos"></div>
+            </div>
 
-  members.delete(socket.id);
+            <div class="controls-bar">
+              <button id="toggle-mic" class="control-btn" type="button">Mic on</button>
+              <button id="toggle-video" class="control-btn" type="button">Camera on</button>
+              <button id="hangup-call" class="control-btn hangup" type="button">End call</button>
+            </div>
+          </div>
 
-  if (members.size === 0) {
-    roomMembers.delete(roomId);
-  } else {
-    notifyRoomMembers(roomId);
-    io.to(roomId).emit('system-message', {
-      userName: 'System',
-      text: `${socket.data.userName || 'Someone'} left the room`,
-    });
-  }
+          <aside class="side-panel">
+            <div class="participants-panel">
+              <h3>Participants</h3>
+              <ul id="participant-list"></ul>
+            </div>
 
-  socket.leave(roomId);
-  socket.data.roomId = null;
-  socket.data.userName = null;
-}
+            <div class="chat-panel">
+              <h3>Chat</h3>
+              <div id="chat-messages" class="chat-messages"></div>
+              <form id="chat-form" class="chat-form">
+                <input id="chat-input" type="text" maxlength="240" placeholder="Type a message..." />
+                <button type="submit">Send</button>
+              </form>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </div>
 
-io.on('connection', (socket) => {
-  socket.on('join-room', ({ roomId, userName }) => {
-    if (!roomId || !userName) return;
-
-    const safeRoomId = String(roomId).trim();
-    const safeUserName = String(userName).trim() || 'Guest';
-
-    if (socket.data.roomId && socket.data.roomId !== safeRoomId) {
-      removeSocketFromRoom(socket);
-    }
-
-    socket.join(safeRoomId);
-    socket.data.roomId = safeRoomId;
-    socket.data.userName = safeUserName;
-
-    if (!roomMembers.has(safeRoomId)) {
-      roomMembers.set(safeRoomId, new Map());
-    }
-
-    const members = roomMembers.get(safeRoomId);
-    members.set(socket.id, safeUserName);
-
-    io.to(safeRoomId).emit('system-message', {
-      userName: 'System',
-      text: `${safeUserName} joined the room`,
-    });
-
-    notifyRoomMembers(safeRoomId);
-
-    socket.to(safeRoomId).emit('user-joined', {
-      socketId: socket.id,
-      userName: safeUserName,
-    });
-  });
-
-  socket.on('leave-room', () => {
-    removeSocketFromRoom(socket);
-  });
-
-  socket.on('signal-peer', ({ targetId, signal }) => {
-    if (!targetId) return;
-
-    socket.to(targetId).emit('peer-signal', {
-      fromId: socket.id,
-      signal,
-    });
-  });
-
-  socket.on('chat-message', ({ text }) => {
-    const roomId = socket.data.roomId;
-    const userName = socket.data.userName || 'Guest';
-
-    if (!roomId || !text) return;
-
-    io.to(roomId).emit('chat-message', {
-      userName,
-      text: String(text).trim(),
-    });
-  });
-
-  socket.on('disconnect', () => {
-    removeSocketFromRoom(socket);
-  });
-});
-
-server.listen(PORT, () => {
-  console.log(`Facecall server listening on http://localhost:${PORT}`);
-});
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

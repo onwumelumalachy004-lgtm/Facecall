@@ -2,6 +2,7 @@ const socket = io();
 const joinForm = document.getElementById('join-form');
 const leaveRoomBtn = document.getElementById('leave-room');
 const copyRoomLinkBtn = document.getElementById('copy-room-link');
+const hangupCallBtn = document.getElementById('hangup-call');
 const joinPanel = document.getElementById('join-panel');
 const callPanel = document.getElementById('call-panel');
 const localVideo = document.getElementById('local-video');
@@ -28,9 +29,39 @@ let localStream = null;
 let isMuted = false;
 let isVideoOff = false;
 let currentRoomId = null;
+let isInRoom = false;
 
 function setConnectionStatus(text) {
   connectionStatus.textContent = text;
+}
+
+function clearRemoteMedia() {
+  remoteVideos.innerHTML = '';
+}
+
+function destroyAllPeers() {
+  peers.forEach((peer) => {
+    try {
+      peer.destroy();
+    } catch (error) {
+      console.warn('Peer already destroyed:', error);
+    }
+  });
+  peers.clear();
+  clearRemoteMedia();
+}
+
+function resetCallUi() {
+  destroyAllPeers();
+  userMap.clear();
+  participantList.innerHTML = '';
+  chatMessages.innerHTML = '';
+  roomLabel.textContent = 'Room: —';
+  joinPanel.classList.remove('hidden');
+  callPanel.classList.add('hidden');
+  currentRoomId = null;
+  isInRoom = false;
+  setConnectionStatus('Ready');
 }
 
 function appendChatMessage({ userName, text, type = 'message' }) {
@@ -120,6 +151,10 @@ function syncToggleButtons() {
 
 async function startCamera() {
   try {
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+    }
+
     localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: true,
@@ -177,7 +212,7 @@ function createPeer(remoteId, initiator = true) {
 }
 
 function shouldInitiateConnection(remoteSocketId) {
-  return socket.id && remoteSocketId && socket.id < remoteSocketId;
+  return !!(socket.id && remoteSocketId && socket.id < remoteSocketId);
 }
 
 async function handleJoin(event) {
@@ -188,12 +223,17 @@ async function handleJoin(event) {
 
   if (!userName || !roomId) return;
 
+  if (isInRoom) {
+    leaveRoom(true);
+  }
+
   await startCamera();
   joinRoom(roomId, userName);
 }
 
 function joinRoom(roomId, userName) {
   currentRoomId = roomId;
+  isInRoom = true;
   roomLabel.textContent = `Room: ${roomId}`;
   joinPanel.classList.add('hidden');
   callPanel.classList.remove('hidden');
@@ -202,29 +242,35 @@ function joinRoom(roomId, userName) {
   socket.emit('join-room', { roomId, userName });
 }
 
-function leaveRoom() {
-  socket.emit('leave-room');
+function leaveRoom(silent = false) {
+  if (socket.connected) {
+    socket.emit('leave-room');
+  }
 
-  peers.forEach((peer) => peer.destroy());
-  peers.clear();
-  remoteVideos.innerHTML = '';
-  userMap.clear();
-
-  joinPanel.classList.remove('hidden');
-  callPanel.classList.add('hidden');
-  roomLabel.textContent = 'Room: —';
-  setConnectionStatus('Ready');
+  destroyAllPeers();
 
   if (localStream) {
     localStream.getTracks().forEach((track) => track.stop());
     localStream = null;
   }
 
+  if (!silent) {
+    appendChatMessage({
+      userName: 'System',
+      text: 'You left the room',
+      type: 'system',
+    });
+  }
+
   isMuted = false;
   isVideoOff = false;
   syncToggleButtons();
-
+  resetCallUi();
   document.getElementById('join-form').reset();
+}
+
+function handleHangup() {
+  leaveRoom(false);
 }
 
 async function copyRoomLink() {
@@ -257,7 +303,8 @@ function sendChatMessage(event) {
 }
 
 joinForm.addEventListener('submit', handleJoin);
-leaveRoomBtn.addEventListener('click', leaveRoom);
+leaveRoomBtn.addEventListener('click', () => leaveRoom(false));
+hangupCallBtn.addEventListener('click', handleHangup);
 copyRoomLinkBtn.addEventListener('click', copyRoomLink);
 chatForm.addEventListener('submit', sendChatMessage);
 
@@ -344,6 +391,13 @@ socket.on('chat-message', ({ userName, text }) => {
 
 socket.on('system-message', ({ userName, text }) => {
   appendChatMessage({ userName, text, type: 'system' });
+});
+
+socket.on('disconnect', () => {
+  setConnectionStatus('Disconnected');
+  if (isInRoom) {
+    resetCallUi();
+  }
 });
 
 window.addEventListener('beforeunload', () => {
