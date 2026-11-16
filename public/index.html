@@ -6,9 +6,7 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: '*',
-  },
+  cors: { origin: '*' },
 });
 
 const PORT = process.env.PORT || 3000;
@@ -28,6 +26,11 @@ function getRoomMembers(roomId) {
   }));
 }
 
+function notifyRoomRoomState(roomId) {
+  const members = getRoomMembers(roomId);
+  io.to(roomId).emit('room-members', { members });
+}
+
 function removeSocketFromRoom(socket) {
   const roomId = socket.data.roomId;
   if (!roomId) return;
@@ -40,11 +43,16 @@ function removeSocketFromRoom(socket) {
   if (members.size === 0) {
     roomMembers.delete(roomId);
   } else {
-    io.to(roomId).emit('room-members', {
-      members: getRoomMembers(roomId),
+    notifyRoomRoomState(roomId);
+    io.to(roomId).emit('system-message', {
+      userName: 'System',
+      text: `${socket.data.userName || 'Someone'} left the room`,
     });
-    io.to(roomId).emit('user-left', { socketId: socket.id });
   }
+
+  socket.leave(roomId);
+  socket.data.roomId = null;
+  socket.data.userName = null;
 }
 
 io.on('connection', (socket) => {
@@ -55,7 +63,6 @@ io.on('connection', (socket) => {
     const safeUserName = String(userName).trim() || 'Guest';
 
     if (socket.data.roomId && socket.data.roomId !== safeRoomId) {
-      socket.leave(socket.data.roomId);
       removeSocketFromRoom(socket);
     }
 
@@ -68,8 +75,12 @@ io.on('connection', (socket) => {
     const members = roomMembers.get(safeRoomId);
     members.set(socket.id, safeUserName);
 
-    const memberList = getRoomMembers(safeRoomId);
-    io.to(safeRoomId).emit('room-members', { members: memberList });
+    io.to(safeRoomId).emit('system-message', {
+      userName: 'System',
+      text: `${safeUserName} joined the room`,
+    });
+
+    notifyRoomRoomState(safeRoomId);
 
     socket.to(safeRoomId).emit('user-joined', {
       socketId: socket.id,
@@ -79,8 +90,6 @@ io.on('connection', (socket) => {
 
   socket.on('leave-room', () => {
     removeSocketFromRoom(socket);
-    socket.data.roomId = null;
-    socket.data.userName = null;
   });
 
   socket.on('signal-peer', ({ targetId, signal }) => {
@@ -89,6 +98,18 @@ io.on('connection', (socket) => {
     socket.to(targetId).emit('peer-signal', {
       fromId: socket.id,
       signal,
+    });
+  });
+
+  socket.on('chat-message', ({ text }) => {
+    const roomId = socket.data.roomId;
+    const userName = socket.data.userName || 'Guest';
+
+    if (!roomId || !text) return;
+
+    io.to(roomId).emit('chat-message', {
+      userName,
+      text: String(text).trim(),
     });
   });
 

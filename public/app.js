@@ -13,7 +13,11 @@
           <p class="eyebrow">Realtime video room</p>
           <h1>Facecall</h1>
         </div>
-        <button id="leave-room" class="secondary-btn" type="button">Leave room</button>
+
+        <div class="topbar-actions">
+          <button id="copy-room-link" class="secondary-btn" type="button">Copy room link</button>
+          <button id="leave-room" class="secondary-btn danger" type="button">Leave room</button>
+        </div>
       </header>
 
       <main id="join-panel" class="panel active">
@@ -45,19 +49,39 @@
           <span id="room-label">Room: —</span>
         </div>
 
-        <div class="video-grid">
-          <div class="video-card local-card">
-            <video id="local-video" autoplay muted playsinline></video>
-            <div class="label">You</div>
+        <div class="call-content">
+          <div class="video-column">
+            <div class="video-grid">
+              <div class="video-card local-card">
+                <video id="local-video" autoplay muted playsinline></video>
+                <div class="label">You</div>
+              </div>
+
+              <div id="remote-videos" class="remote-videos"></div>
+            </div>
+
+            <div class="controls-bar">
+              <button id="toggle-mic" class="control-btn" type="button">Mic on</button>
+              <button id="toggle-video" class="control-btn" type="button">Camera on</button>
+            </div>
           </div>
 
-          <div id="remote-videos" class="remote-videos"></div>
-        </div>
+          <aside class="side-panel">
+            <div class="participants-panel">
+              <h3>Participants</h3>
+              <ul id="participant-list"></ul>
+            </div>
 
-        <aside class="participants-panel">
-          <h3>Participants</h3>
-          <ul id="participant-list"></ul>
-        </aside>
+            <div class="chat-panel">
+              <h3>Chat</h3>
+              <div id="chat-messages" class="chat-messages"></div>
+              <form id="chat-form" class="chat-form">
+                <input id="chat-input" type="text" maxlength="240" placeholder="Type a message..." />
+                <button type="submit">Send</button>
+              </form>
+            </div>
+          </aside>
+        </div>
       </section>
     </div>
 

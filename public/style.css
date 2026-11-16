@@ -1,6 +1,7 @@
 const socket = io();
 const joinForm = document.getElementById('join-form');
 const leaveRoomBtn = document.getElementById('leave-room');
+const copyRoomLinkBtn = document.getElementById('copy-room-link');
 const joinPanel = document.getElementById('join-panel');
 const callPanel = document.getElementById('call-panel');
 const localVideo = document.getElementById('local-video');
@@ -8,34 +9,58 @@ const remoteVideos = document.getElementById('remote-videos');
 const participantList = document.getElementById('participant-list');
 const roomLabel = document.getElementById('room-label');
 const connectionStatus = document.getElementById('connection-status');
+const toggleMicBtn = document.getElementById('toggle-mic');
+const toggleVideoBtn = document.getElementById('toggle-video');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
 
 const peers = new Map();
 const userMap = new Map();
 let localStream = null;
+let isMuted = false;
+let isVideoOff = false;
+let currentRoomId = null;
 
 function setConnectionStatus(text) {
   connectionStatus.textContent = text;
+}
+
+function appendChatMessage({ userName, text, type = 'message' }) {
+  const entry = document.createElement('div');
+  entry.className = `chat-entry ${type}`;
+
+  const meta = document.createElement('div');
+  meta.className = 'chat-meta';
+  meta.textContent = type === 'system' ? 'System' : userName;
+
+  const message = document.createElement('div');
+  message.className = 'chat-text';
+  message.textContent = text;
+
+  entry.append(meta, message);
+  chatMessages.appendChild(entry);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function updateParticipantList(members) {
   participantList.innerHTML = '';
 
   members.forEach(({ socketId, userName }) => {
+    userMap.set(socketId, userName);
+
     const item = document.createElement('li');
     item.innerHTML = `
       <span>${userName}</span>
       <span class="dot"></span>
     `;
     participantList.appendChild(item);
-    userMap.set(socketId, userName);
   });
 }
 
 function renderRoomState(members) {
   const list = Array.isArray(members) ? members : [];
   updateParticipantList(list);
-
-  list.forEach(({ socketId, userName }) => userMap.set(socketId, userName));
 }
 
 function createRemoteCard(remoteId) {
@@ -68,6 +93,23 @@ function ensureRemoteVideo(remoteId) {
   return card.querySelector('video');
 }
 
+function syncToggleButtons() {
+  toggleMicBtn.textContent = isMuted ? 'Mic off' : 'Mic on';
+  toggleVideoBtn.textContent = isVideoOff ? 'Camera off' : 'Camera on';
+  toggleMicBtn.classList.toggle('active', isMuted);
+  toggleVideoBtn.classList.toggle('active', isVideoOff);
+
+  if (localStream) {
+    localStream.getAudioTracks().forEach((track) => {
+      track.enabled = !isMuted;
+    });
+
+    localStream.getVideoTracks().forEach((track) => {
+      track.enabled = !isVideoOff;
+    });
+  }
+}
+
 async function startCamera() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -76,6 +118,7 @@ async function startCamera() {
     });
 
     localVideo.srcObject = localStream;
+    syncToggleButtons();
   } catch (error) {
     console.error('Camera access failed:', error);
     setConnectionStatus('Camera access blocked');
@@ -124,15 +167,6 @@ function createPeer(remoteId, initiator = true) {
   return peer;
 }
 
-function joinRoom(roomId, userName) {
-  roomLabel.textContent = `Room: ${roomId}`;
-  joinPanel.classList.add('hidden');
-  callPanel.classList.remove('hidden');
-  setConnectionStatus('Connecting');
-
-  socket.emit('join-room', { roomId, userName });
-}
-
 async function handleJoin(event) {
   event.preventDefault();
 
@@ -143,6 +177,16 @@ async function handleJoin(event) {
 
   await startCamera();
   joinRoom(roomId, userName);
+}
+
+function joinRoom(roomId, userName) {
+  currentRoomId = roomId;
+  roomLabel.textContent = `Room: ${roomId}`;
+  joinPanel.classList.add('hidden');
+  callPanel.classList.remove('hidden');
+  setConnectionStatus('Connecting');
+
+  socket.emit('join-room', { roomId, userName });
 }
 
 function leaveRoom() {
@@ -163,14 +207,66 @@ function leaveRoom() {
     localStream = null;
   }
 
+  isMuted = false;
+  isVideoOff = false;
+  syncToggleButtons();
+
   document.getElementById('join-form').reset();
+}
+
+async function copyRoomLink() {
+  if (!currentRoomId) return;
+
+  const baseUrl = `${window.location.origin}${window.location.pathname}`;
+  const shareUrl = `${baseUrl}?room=${encodeURIComponent(currentRoomId)}`;
+
+  try {
+    await navigator.clipboard.writeText(shareUrl);
+    copyRoomLinkBtn.textContent = 'Copied!';
+    setTimeout(() => {
+      copyRoomLinkBtn.textContent = 'Copy room link';
+    }, 1200);
+  } catch (error) {
+    console.error('Clipboard failed:', error);
+    copyRoomLinkBtn.textContent = 'Copy failed';
+  }
+}
+
+function sendChatMessage(event) {
+  event.preventDefault();
+
+  const text = chatInput.value.trim();
+  if (!text) return;
+
+  socket.emit('chat-message', { text });
+  appendChatMessage({ userName: 'You', text });
+  chatInput.value = '';
 }
 
 joinForm.addEventListener('submit', handleJoin);
 leaveRoomBtn.addEventListener('click', leaveRoom);
+copyRoomLinkBtn.addEventListener('click', copyRoomLink);
+chatForm.addEventListener('submit', sendChatMessage);
+
+toggleMicBtn.addEventListener('click', () => {
+  isMuted = !isMuted;
+  syncToggleButtons();
+});
+
+toggleVideoBtn.addEventListener('click', () => {
+  isVideoOff = !isVideoOff;
+  syncToggleButtons();
+});
 
 socket.on('connect', () => {
   setConnectionStatus('Ready');
+
+  const params = new URLSearchParams(window.location.search);
+  const roomFromUrl = params.get('room');
+
+  if (roomFromUrl) {
+    document.getElementById('room-name').value = roomFromUrl;
+  }
 });
 
 socket.on('room-members', ({ members }) => {
@@ -226,6 +322,14 @@ socket.on('user-left', ({ socketId }) => {
   })));
 });
 
+socket.on('chat-message', ({ userName, text }) => {
+  appendChatMessage({ userName, text });
+});
+
+socket.on('system-message', ({ userName, text }) => {
+  appendChatMessage({ userName, text, type: 'system' });
+});
+
 window.addEventListener('beforeunload', () => {
   if (socket.connected) {
     socket.emit('leave-room');
@@ -235,3 +339,5 @@ window.addEventListener('beforeunload', () => {
     localStream.getTracks().forEach((track) => track.stop());
   }
 });
+
+syncToggleButtons();
