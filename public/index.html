@@ -26,9 +26,10 @@ function getRoomMembers(roomId) {
   }));
 }
 
-function notifyRoomRoomState(roomId) {
-  const members = getRoomMembers(roomId);
-  io.to(roomId).emit('room-members', { members });
+function notifyRoomMembers(roomId) {
+  io.to(roomId).emit('room-members', {
+    members: getRoomMembers(roomId),
+  });
 }
 
 function removeSocketFromRoom(socket) {
@@ -43,7 +44,7 @@ function removeSocketFromRoom(socket) {
   if (members.size === 0) {
     roomMembers.delete(roomId);
   } else {
-    notifyRoomRoomState(roomId);
+    notifyRoomMembers(roomId);
     io.to(roomId).emit('system-message', {
       userName: 'System',
       text: `${socket.data.userName || 'Someone'} left the room`,
@@ -70,7 +71,9 @@ io.on('connection', (socket) => {
     socket.data.roomId = safeRoomId;
     socket.data.userName = safeUserName;
 
-    if (!roomMembers.has(safeRoomId)) roomMembers.set(safeRoomId, new Map());
+    if (!roomMembers.has(safeRoomId)) {
+      roomMembers.set(safeRoomId, new Map());
+    }
 
     const members = roomMembers.get(safeRoomId);
     members.set(socket.id, safeUserName);
@@ -80,7 +83,7 @@ io.on('connection', (socket) => {
       text: `${safeUserName} joined the room`,
     });
 
-    notifyRoomRoomState(safeRoomId);
+    notifyRoomMembers(safeRoomId);
 
     socket.to(safeRoomId).emit('user-joined', {
       socketId: socket.id,

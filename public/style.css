@@ -17,6 +17,13 @@ const chatMessages = document.getElementById('chat-messages');
 
 const peers = new Map();
 const userMap = new Map();
+const peerConfig = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ],
+};
+
 let localStream = null;
 let isMuted = false;
 let isVideoOff = false;
@@ -45,6 +52,7 @@ function appendChatMessage({ userName, text, type = 'message' }) {
 
 function updateParticipantList(members) {
   participantList.innerHTML = '';
+  userMap.clear();
 
   members.forEach(({ socketId, userName }) => {
     userMap.set(socketId, userName);
@@ -134,6 +142,7 @@ function createPeer(remoteId, initiator = true) {
     initiator,
     trickle: true,
     stream: localStream,
+    config: peerConfig,
   });
 
   peer.on('signal', (signal) => {
@@ -165,6 +174,10 @@ function createPeer(remoteId, initiator = true) {
 
   peers.set(remoteId, peer);
   return peer;
+}
+
+function shouldInitiateConnection(remoteSocketId) {
+  return socket.id && remoteSocketId && socket.id < remoteSocketId;
 }
 
 async function handleJoin(event) {
@@ -273,7 +286,7 @@ socket.on('room-members', ({ members }) => {
   renderRoomState(members);
 
   members.forEach(({ socketId }) => {
-    if (socketId !== socket.id && !peers.has(socketId)) {
+    if (socketId !== socket.id && !peers.has(socketId) && shouldInitiateConnection(socketId)) {
       createPeer(socketId, true);
     }
   });
@@ -292,7 +305,10 @@ socket.on('room-members', ({ members }) => {
 socket.on('user-joined', ({ socketId, userName }) => {
   if (socketId === socket.id) return;
   userMap.set(socketId, userName);
-  if (!peers.has(socketId)) createPeer(socketId, true);
+
+  if (!peers.has(socketId) && shouldInitiateConnection(socketId)) {
+    createPeer(socketId, true);
+  }
 });
 
 socket.on('peer-signal', ({ fromId, signal }) => {
