@@ -1,63 +1,237 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Facecall</title>
-    <link rel="stylesheet" href="/style.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Realtime room</p>
-          <h1>Facecall</h1>
-        </div>
-        <button id="leave-room" class="secondary-btn" type="button">Leave room</button>
-      </header>
+const socket = io();
+const joinForm = document.getElementById('join-form');
+const leaveRoomBtn = document.getElementById('leave-room');
+const joinPanel = document.getElementById('join-panel');
+const callPanel = document.getElementById('call-panel');
+const localVideo = document.getElementById('local-video');
+const remoteVideos = document.getElementById('remote-videos');
+const participantList = document.getElementById('participant-list');
+const roomLabel = document.getElementById('room-label');
+const connectionStatus = document.getElementById('connection-status');
 
-      <main class="join-panel" id="join-panel">
-        <div class="card">
-          <h2>Join a call</h2>
-          <form id="join-form">
-            <label>
-              Your name
-              <input id="user-name" name="userName" type="text" maxlength="24" placeholder="Alex" required />
-            </label>
+const peers = new Map();
+const userMap = new Map();
+let localStream = null;
 
-            <label>
-              Room name
-              <input id="room-name" name="roomId" type="text" maxlength="30" placeholder="demo-room" required />
-            </label>
+function setConnectionStatus(text) {
+  connectionStatus.textContent = text;
+}
 
-            <button type="submit">Join call</button>
-          </form>
-        </div>
-      </main>
+function updateParticipantList(members) {
+  participantList.innerHTML = '';
 
-      <section class="call-panel hidden" id="call-panel">
-        <div class="status-bar">
-          <span id="connection-status">Disconnected</span>
-          <span id="room-label">Room: —</span>
-        </div>
+  members.forEach(({ socketId, userName }) => {
+    const item = document.createElement('li');
+    item.innerHTML = `
+      <span>${userName}</span>
+      <span class="dot"></span>
+    `;
+    participantList.appendChild(item);
+    userMap.set(socketId, userName);
+  });
+}
 
-        <div class="video-grid">
-          <div class="video-card local-card">
-            <video id="local-video" autoplay muted playsinline></video>
-            <div class="label">You</div>
-          </div>
-          <div id="remote-videos" class="remote-videos"></div>
-        </div>
+function renderRoomState(members) {
+  const list = Array.isArray(members) ? members : [];
+  updateParticipantList(list);
 
-        <aside class="participants-panel">
-          <h3>Participants</h3>
-          <ul id="participant-list"></ul>
-        </aside>
-      </section>
-    </div>
+  list.forEach(({ socketId, userName }) => userMap.set(socketId, userName));
+}
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-    <script src="/app.js"></script>
-  </body>
-</html>
+function createRemoteCard(remoteId) {
+  const card = document.createElement('div');
+  card.className = 'remote-video-card';
+  card.dataset.socketId = remoteId;
+
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = false;
+
+  const label = document.createElement('div');
+  label.className = 'label';
+  label.textContent = userMap.get(remoteId) || 'Peer';
+
+  card.append(video, label);
+  remoteVideos.appendChild(card);
+
+  return { card, video };
+}
+
+function ensureRemoteVideo(remoteId) {
+  let card = remoteVideos.querySelector(`[data-socket-id="${remoteId}"]`);
+  if (!card) {
+    const created = createRemoteCard(remoteId);
+    card = created.card;
+  }
+
+  return card.querySelector('video');
+}
+
+async function startCamera() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+
+    localVideo.srcObject = localStream;
+  } catch (error) {
+    console.error('Camera access failed:', error);
+    setConnectionStatus('Camera access blocked');
+  }
+}
+
+function createPeer(remoteId, initiator = true) {
+  if (peers.has(remoteId)) {
+    return peers.get(remoteId);
+  }
+
+  const peer = new SimplePeer({
+    initiator,
+    trickle: true,
+    stream: localStream,
+  });
+
+  peer.on('signal', (signal) => {
+    socket.emit('signal-peer', {
+      targetId: remoteId,
+      signal,
+    });
+  });
+
+  peer.on('stream', (remoteStream) => {
+    const video = ensureRemoteVideo(remoteId);
+    video.srcObject = remoteStream;
+  });
+
+  peer.on('connect', () => {
+    setConnectionStatus('Connected');
+  });
+
+  peer.on('error', (error) => {
+    console.error('Peer connection error:', error);
+    setConnectionStatus('Connection error');
+  });
+
+  peer.on('close', () => {
+    const card = remoteVideos.querySelector(`[data-socket-id="${remoteId}"]`);
+    if (card) card.remove();
+    peers.delete(remoteId);
+  });
+
+  peers.set(remoteId, peer);
+  return peer;
+}
+
+function joinRoom(roomId, userName) {
+  roomLabel.textContent = `Room: ${roomId}`;
+  joinPanel.classList.add('hidden');
+  callPanel.classList.remove('hidden');
+  setConnectionStatus('Connecting');
+
+  socket.emit('join-room', { roomId, userName });
+}
+
+async function handleJoin(event) {
+  event.preventDefault();
+
+  const userName = document.getElementById('user-name').value.trim();
+  const roomId = document.getElementById('room-name').value.trim();
+
+  if (!userName || !roomId) return;
+
+  await startCamera();
+  joinRoom(roomId, userName);
+}
+
+function leaveRoom() {
+  socket.emit('leave-room');
+
+  peers.forEach((peer) => peer.destroy());
+  peers.clear();
+  remoteVideos.innerHTML = '';
+  userMap.clear();
+
+  joinPanel.classList.remove('hidden');
+  callPanel.classList.add('hidden');
+  roomLabel.textContent = 'Room: —';
+  setConnectionStatus('Ready');
+
+  if (localStream) {
+    localStream.getTracks().forEach((track) => track.stop());
+    localStream = null;
+  }
+
+  document.getElementById('join-form').reset();
+}
+
+joinForm.addEventListener('submit', handleJoin);
+leaveRoomBtn.addEventListener('click', leaveRoom);
+
+socket.on('connect', () => {
+  setConnectionStatus('Ready');
+});
+
+socket.on('room-members', ({ members }) => {
+  renderRoomState(members);
+
+  members.forEach(({ socketId }) => {
+    if (socketId !== socket.id && !peers.has(socketId)) {
+      createPeer(socketId, true);
+    }
+  });
+
+  peers.forEach((peer, socketId) => {
+    const stillThere = members.some((member) => member.socketId === socketId);
+    if (!stillThere) {
+      peer.destroy();
+      peers.delete(socketId);
+      const card = remoteVideos.querySelector(`[data-socket-id="${socketId}"]`);
+      if (card) card.remove();
+    }
+  });
+});
+
+socket.on('user-joined', ({ socketId, userName }) => {
+  if (socketId === socket.id) return;
+  userMap.set(socketId, userName);
+  if (!peers.has(socketId)) createPeer(socketId, true);
+});
+
+socket.on('peer-signal', ({ fromId, signal }) => {
+  let peer = peers.get(fromId);
+
+  if (!peer) {
+    peer = createPeer(fromId, false);
+  }
+
+  peer.signal(signal);
+});
+
+socket.on('user-left', ({ socketId }) => {
+  const peer = peers.get(socketId);
+  if (peer) {
+    peer.destroy();
+    peers.delete(socketId);
+  }
+
+  const card = remoteVideos.querySelector(`[data-socket-id="${socketId}"]`);
+  if (card) card.remove();
+
+  userMap.delete(socketId);
+  renderRoomState(Array.from(userMap.entries()).map(([socketIdValue, userName]) => ({
+    socketId: socketIdValue,
+    userName,
+  })));
+});
+
+window.addEventListener('beforeunload', () => {
+  if (socket.connected) {
+    socket.emit('leave-room');
+  }
+
+  if (localStream) {
+    localStream.getTracks().forEach((track) => track.stop());
+  }
+});

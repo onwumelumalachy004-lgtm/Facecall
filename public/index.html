@@ -1,0 +1,102 @@
+const express = require('express');
+const http = require('http');
+const path = require('path');
+const { Server } = require('socket.io');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+  },
+});
+
+const PORT = process.env.PORT || 3000;
+const roomMembers = new Map();
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, message: 'Facecall server is running' });
+});
+
+function getRoomMembers(roomId) {
+  const members = roomMembers.get(roomId) || new Map();
+  return Array.from(members.entries()).map(([socketId, userName]) => ({
+    socketId,
+    userName,
+  }));
+}
+
+function removeSocketFromRoom(socket) {
+  const roomId = socket.data.roomId;
+  if (!roomId) return;
+
+  const members = roomMembers.get(roomId);
+  if (!members) return;
+
+  members.delete(socket.id);
+
+  if (members.size === 0) {
+    roomMembers.delete(roomId);
+  } else {
+    io.to(roomId).emit('room-members', {
+      members: getRoomMembers(roomId),
+    });
+    io.to(roomId).emit('user-left', { socketId: socket.id });
+  }
+}
+
+io.on('connection', (socket) => {
+  socket.on('join-room', ({ roomId, userName }) => {
+    if (!roomId || !userName) return;
+
+    const safeRoomId = String(roomId).trim();
+    const safeUserName = String(userName).trim() || 'Guest';
+
+    if (socket.data.roomId && socket.data.roomId !== safeRoomId) {
+      socket.leave(socket.data.roomId);
+      removeSocketFromRoom(socket);
+    }
+
+    socket.join(safeRoomId);
+    socket.data.roomId = safeRoomId;
+    socket.data.userName = safeUserName;
+
+    if (!roomMembers.has(safeRoomId)) roomMembers.set(safeRoomId, new Map());
+
+    const members = roomMembers.get(safeRoomId);
+    members.set(socket.id, safeUserName);
+
+    const memberList = getRoomMembers(safeRoomId);
+    io.to(safeRoomId).emit('room-members', { members: memberList });
+
+    socket.to(safeRoomId).emit('user-joined', {
+      socketId: socket.id,
+      userName: safeUserName,
+    });
+  });
+
+  socket.on('leave-room', () => {
+    removeSocketFromRoom(socket);
+    socket.data.roomId = null;
+    socket.data.userName = null;
+  });
+
+  socket.on('signal-peer', ({ targetId, signal }) => {
+    if (!targetId) return;
+
+    socket.to(targetId).emit('peer-signal', {
+      fromId: socket.id,
+      signal,
+    });
+  });
+
+  socket.on('disconnect', () => {
+    removeSocketFromRoom(socket);
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`Facecall server listening on http://localhost:${PORT}`);
+});
