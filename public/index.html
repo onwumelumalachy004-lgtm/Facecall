@@ -1,93 +1,46 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Facecall</title>
-    <link rel="stylesheet" href="/style.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Realtime video room</p>
-          <h1>Facecall</h1>
-        </div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#10131c" />
+  <title>Facecall — Video rooms</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="brand"><a href="/" aria-label="Facecall home"><span class="brand-mark">F</span><span>facecall</span></a><span class="brand-note">Private rooms · no account needed</span></header>
+    <section id="lobby" class="lobby">
+      <div class="hero"><p class="eyebrow">A better way to meet</p><h1>Make room<br /><span>for everyone.</span></h1><p class="lead">Start a video call in seconds. Share a room link and bring your people together.</p></div>
+      <form id="join-form" class="join-card">
+        <h2>Join your call</h2><p class="muted">Choose a name and a room to get started.</p>
+        <label for="name">Your name</label><input id="name" maxlength="32" autocomplete="name" placeholder="e.g. Alex" required />
+        <label for="room">Room name</label><input id="room" maxlength="40" autocomplete="off" placeholder="e.g. friday-huddle" required />
+        <p id="join-error" class="error" role="alert"></p><button class="primary" type="submit">Join room <span aria-hidden="true">→</span></button>
+        <p class="fine-print">Camera and microphone access will be requested by your browser.</p>
+      </form>
+    </section>
 
-        <div class="topbar-actions">
-          <button id="copy-room-link" class="secondary-btn" type="button">Copy room link</button>
-          <button id="leave-room" class="secondary-btn danger" type="button">Leave room</button>
-        </div>
-      </header>
-
-      <main id="join-panel" class="panel active">
-        <div class="card">
-          <div class="card-header">
-            <h2>Join a video call</h2>
-            <span class="badge">WebRTC</span>
-          </div>
-
-          <form id="join-form">
-            <label>
-              Your name
-              <input id="user-name" type="text" maxlength="24" placeholder="Alex" required />
-            </label>
-
-            <label>
-              Room name
-              <input id="room-name" type="text" maxlength="30" placeholder="demo-room" required />
-            </label>
-
-            <button type="submit">Join call</button>
-          </form>
-        </div>
-      </main>
-
-      <section id="call-panel" class="panel hidden">
-        <div class="status-bar">
-          <span id="connection-status">Ready</span>
-          <span id="room-label">Room: —</span>
-        </div>
-
-        <div class="call-content">
-          <div class="video-column">
-            <div class="video-grid">
-              <div class="video-card local-card">
-                <video id="local-video" autoplay muted playsinline></video>
-                <div class="label">You</div>
-              </div>
-
-              <div id="remote-videos" class="remote-videos"></div>
-            </div>
-
-            <div class="controls-bar">
-              <button id="toggle-mic" class="control-btn" type="button">Mic on</button>
-              <button id="toggle-video" class="control-btn" type="button">Camera on</button>
-              <button id="hangup-call" class="control-btn hangup" type="button">End call</button>
-            </div>
-          </div>
-
-          <aside class="side-panel">
-            <div class="participants-panel">
-              <h3>Participants</h3>
-              <ul id="participant-list"></ul>
-            </div>
-
-            <div class="chat-panel">
-              <h3>Chat</h3>
-              <div id="chat-messages" class="chat-messages"></div>
-              <form id="chat-form" class="chat-form">
-                <input id="chat-input" type="text" maxlength="240" placeholder="Type a message..." />
-                <button type="submit">Send</button>
-              </form>
-            </div>
-          </aside>
-        </div>
-      </section>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-    <script src="/app.js"></script>
-  </body>
+    <section id="meeting" class="meeting hidden" aria-label="Video meeting">
+      <header class="meeting-header"><div><p class="eyebrow">You’re in a room</p><h2 id="room-title">Meeting</h2></div><div class="meeting-meta"><span id="connection-state" class="connection"><i></i> Connecting</span><span id="call-timer">00:00</span><button id="copy-link" class="ghost" type="button">Copy invite link</button></div></header>
+      <div class="meeting-layout">
+        <section class="stage" aria-label="Call participants"><div id="video-grid" class="video-grid"></div><div id="empty-state" class="empty-state"><div class="empty-icon">◉</div><h3>Waiting for others to join</h3><p>Share the invite link to bring someone into the room.</p><button id="share-invite" class="ghost" type="button">Copy invite link</button></div></section>
+        <aside class="sidebar">
+          <section class="side-section participants"><div class="side-heading"><h3>People</h3><span id="people-count" class="count">1</span></div><ul id="people-list"></ul></section>
+          <section class="side-section chat"><div class="side-heading"><h3>In-call chat</h3></div><div id="chat-log" class="chat-log" aria-live="polite"></div><form id="chat-form" class="chat-form"><input id="chat-input" maxlength="1000" placeholder="Send a message…" aria-label="Message" /><button type="submit" aria-label="Send message">↑</button></form></section>
+        </aside>
+      </div>
+      <footer class="controls" aria-label="Call controls">
+        <button id="mic-button" class="control" type="button"><span class="control-icon">♫</span><span>Mute</span></button>
+        <button id="camera-button" class="control" type="button"><span class="control-icon">▣</span><span>Stop video</span></button>
+        <button id="share-screen-button" class="control" type="button"><span class="control-icon">▱</span><span>Share screen</span></button>
+        <button id="hand-button" class="control" type="button"><span class="control-icon">✋</span><span>Raise hand</span></button>
+        <button id="leave-button" class="control leave" type="button"><span class="control-icon">☎</span><span>Leave call</span></button>
+      </footer>
+    </section>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <footer class="site-footer">Facecall is a lightweight demo. Calls are peer-to-peer; use HTTPS and configure TURN for reliable production connectivity.</footer>
+  </main>
+  <script src="/socket.io/socket.io.js"></script><script src="/app.js"></script>
+</body>
 </html>
