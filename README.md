@@ -255,6 +255,12 @@ video {
   color: #ffd5d5;
 }
 
+.control-btn.hangup {
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #ffd7d7;
+}
+
 .side-panel {
   display: grid;
   gap: 18px;
