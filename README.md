@@ -1,367 +1,44 @@
-* {
-  box-sizing: border-box;
-}
+# Facecall
 
-:root {
-  --bg: #07111f;
-  --bg-2: #0f1d32;
-  --panel: rgba(15, 23, 42, 0.86);
-  --panel-border: rgba(148, 163, 184, 0.2);
-  --text: #edf6ff;
-  --muted: #a7bedf;
-  --primary: #61dafb;
-  --primary-2: #7c6cff;
-  --success: #34d399;
-  --danger: #f87171;
-}
+A lightweight browser-based video call app using Socket.IO and WebRTC.
 
-html, body {
-  margin: 0;
-  min-height: 100%;
-  font-family: Inter, 'Segoe UI', sans-serif;
-  background: radial-gradient(circle at top, #10213d 0%, #08111d 50%, #050b13 100%);
-  color: var(--text);
-}
+## Features
+- Join a room by name
+- Real-time video and audio streaming
+- Participant list
+- In-call chat
+- Copyable room links
+- Mic/camera toggles
+- Leave/end-call flow
 
-button,
-input {
-  font: inherit;
-}
+## Requirements
+- Node.js 18+
+- A browser with camera and microphone permission support
 
-.app-shell {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 28px 18px 48px;
-}
+## Run locally
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 24px;
-}
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+2. Start the server:
+   ```bash
+   npm start
+   ```
 
-.eyebrow {
-  margin: 0 0 8px;
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
+3. Open the app in a browser:
+   ```text
+   http://localhost:3000
+   ```
 
-h1, h2, h3, p {
-  margin: 0;
-}
+4. Open a second tab or browser and join the same room name to test calls.
 
-h1 {
-  font-size: clamp(2.1rem, 5vw, 3.4rem);
-}
+## Production notes
+- Use a real TURN/STUN setup for production WebRTC connectivity.
+- Add HTTPS in production.
+- Set `PORT` via environment variable if needed.
+- Consider reverse proxying behind Nginx or a managed platform.
 
-.panel {
-  display: block;
-}
-
-.hidden {
-  display: none !important;
-}
-
-.card,
-.status-bar,
-.video-card,
-.participants-panel,
-.chat-panel {
-  background: rgba(15, 23, 42, 0.86);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.45);
-}
-
-.card {
-  width: min(540px, 100%);
-  margin: 0 auto;
-  padding: 28px;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 8px;
-  border-radius: 999px;
-  background: rgba(97, 218, 251, 0.12);
-  color: var(--primary);
-  border: 1px solid rgba(97, 218, 251, 0.3);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-form {
-  display: grid;
-  gap: 18px;
-}
-
-label {
-  display: grid;
-  gap: 8px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-input {
-  width: 100%;
-  background: rgba(15, 23, 42, 0.9);
-  color: var(--text);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 12px;
-  padding: 12px 14px;
-  outline: none;
-}
-
-input:focus {
-  border-color: rgba(97, 218, 251, 0.7);
-  box-shadow: 0 0 0 3px rgba(97, 218, 251, 0.15);
-}
-
-button {
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  background: linear-gradient(135deg, var(--primary), var(--primary-2));
-  color: #07111f;
-  font-weight: 800;
-  padding: 12px 18px;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 28px rgba(97, 218, 251, 0.25);
-}
-
-.secondary-btn {
-  background: rgba(15, 23, 42, 0.75);
-  color: var(--text);
-  border: 1px solid var(--panel-border);
-}
-
-.secondary-btn.danger {
-  border-color: rgba(248, 113, 113, 0.3);
-  color: #ffd4d4;
-}
-
-.status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 18px;
-  color: var(--muted);
-  margin-bottom: 20px;
-}
-
-.call-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1.9fr) minmax(300px, 0.9fr);
-  gap: 20px;
-}
-
-.video-column {
-  display: grid;
-  gap: 18px;
-}
-
-.video-grid {
-  display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(260px, 1fr);
-  gap: 20px;
-}
-
-.video-card {
-  position: relative;
-  min-height: 360px;
-  overflow: hidden;
-}
-
-video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #000;
-}
-
-.local-card {
-  border-color: rgba(97, 218, 251, 0.45);
-}
-
-.remote-videos {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 18px;
-  align-content: start;
-}
-
-.remote-video-card {
-  position: relative;
-  min-height: 220px;
-  overflow: hidden;
-  border-radius: 18px;
-  border: 1px solid var(--panel-border);
-  background: rgba(15, 23, 42, 0.8);
-}
-
-.label {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  background: rgba(5, 11, 19, 0.8);
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 0.8rem;
-  color: var(--text);
-}
-
-.controls-bar {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.control-btn {
-  background: rgba(15, 23, 42, 0.7);
-  color: var(--text);
-  border: 1px solid var(--panel-border);
-}
-
-.control-btn.active {
-  background: rgba(248, 113, 113, 0.14);
-  border-color: rgba(248, 113, 113, 0.3);
-  color: #ffd5d5;
-}
-
-.control-btn.hangup {
-  background: rgba(248, 113, 113, 0.14);
-  border-color: rgba(248, 113, 113, 0.35);
-  color: #ffd7d7;
-}
-
-.side-panel {
-  display: grid;
-  gap: 18px;
-}
-
-.participants-panel,
-.chat-panel {
-  padding: 18px 20px;
-}
-
-.participants-panel h3,
-.chat-panel h3 {
-  margin-bottom: 12px;
-}
-
-#participant-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 10px;
-}
-
-#participant-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  color: var(--muted);
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--success);
-  display: inline-block;
-}
-
-.chat-panel {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-height: 320px;
-}
-
-.chat-messages {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 150px;
-  max-height: 260px;
-  overflow-y: auto;
-  padding-right: 6px;
-  margin-bottom: 12px;
-}
-
-.chat-entry {
-  display: grid;
-  gap: 4px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 10px;
-  padding: 8px 10px;
-}
-
-.chat-entry.system {
-  border-color: rgba(97, 218, 251, 0.2);
-  background: rgba(97, 218, 251, 0.06);
-}
-
-.chat-meta {
-  font-size: 0.72rem;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.chat-text {
-  color: var(--text);
-  line-height: 1.45;
-  word-break: break-word;
-}
-
-.chat-form {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-}
-
-@media (max-width: 860px) {
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .call-content,
-  .video-grid {
-    grid-template-columns: 1fr;
-  }
-}
+## Environment variables
+- `PORT` — server port (default: 3000)
