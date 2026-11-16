@@ -1,0 +1,25 @@
+{
+  "name": "facecall",
+  "version": "1.0.0",
+  "description": "Simple browser-based video chat app built with Node.js, Socket.IO, and WebRTC.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "video-chat",
+    "web-rtc",
+    "socket-io",
+    "facecall"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "simple-peer": "^9.11.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
